@@ -1,0 +1,88 @@
+---
+- hosts: minecraft-server
+  become: yes
+  vars:
+    - home: /home/ubuntu
+    - java_version: 21.0.3-ms
+
+  pre_tasks:
+    - name: Installing SDKMAn dependencies
+      apt:
+        state: latest
+        name:
+          - zip
+          - unzip
+
+  tasks:
+    - name: Installing SDK Man
+      become: no
+      shell: "curl -s 'https://get.sdkman.io' | bash"
+      args:
+          executable: /bin/bash
+
+    - name: Adding SDK Man to bash_profile
+      lineinfile: path={{ home }}/.bash_profile
+        line={{ item }}
+        state=present
+        create=yes
+      with_items:
+        - 'source "$HOME/.sdkman/bin/sdkman-init.sh"'
+
+    - name: Installing Java
+      shell: source ~/.bash_profile && sdk install java {{ java_version }}
+      become: no
+      args:
+        executable: /bin/bash
+
+    - name: Create Minecraft directory
+      become: no
+      file:
+        path: ~/mc
+        state: directory
+
+    - name: Download Minecraft server
+      become: no
+      get_url:
+        url: https://piston-data.mojang.com/v1/objects/8f3112a1049751cc472ec13e397eade5336ca7ae/server.jar
+        dest: ~/mc/server.jar
+
+    - name: Accept Minecraft EULA
+      become: no
+      lineinfile:
+        path: ~/mc/eula.txt
+        regexp: '^eula=false'
+        line: 'eula=true'
+        create: yes
+
+    - name: Create systemd service file
+      become: yes
+      copy:
+        content: |
+          [Unit]
+          Description=Minecraft Server
+          After=network.target
+
+          [Service]
+          User=ubuntu
+          Group=ubuntu
+          Nice=1
+          KillMode=none
+          SuccessExitStatus=0 1
+          ProtectSystem=full
+          PrivateDevices=yes
+          PrivateTmp=yes
+          WorkingDirectory=/home/ubuntu/mc
+          ExecStart=/usr/bin/screen -DmS minecraft /home/ubuntu/.sdkman/candidates/java/current/bin/java -Xms1G -Xmx1G -jar server.jar nogui
+          ExecStop=/usr/bin/screen -S minecraft -X stuff "stop\n"
+
+          [Install]
+          WantedBy=multi-user.target
+        dest: /etc/systemd/system/minecraft.service
+
+    - name: Start Minecraft server
+      become: yes
+      systemd:
+        name: minecraft
+        state: started
+        enabled: yes
+        daemon_reload: yes
