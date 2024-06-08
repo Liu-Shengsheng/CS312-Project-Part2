@@ -1,0 +1,14 @@
+---
+- name: Reboot EC2 instance
+  hosts: minecraft-server
+  become: yes
+  tasks:
+    - name: Reboot the instance
+      ansible.builtin.shell: sudo reboot
+      async: 1
+      poll: 0
+
+    - name: Wait for the instance to come back online
+      wait_for_connection:
+        timeout: 300
+
